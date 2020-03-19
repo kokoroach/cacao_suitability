@@ -1,7 +1,10 @@
 
 A. Mean of 'Active pixel counts'
 
-Prec   353 980
-TAve   353 978
-TMin   353 980
-TMin   353 980
+BASELINE:
+
+DRY  353_978
+PREC 353_978
+TAVG 353_980
+TMAX 353_980
+TMIN 353_980
