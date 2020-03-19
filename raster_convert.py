@@ -100,7 +100,6 @@ def gdal2xyz(srcfile, dstfile=None, clim_type=None, noData=-999, exclude=False, 
         frmt = '%.3f' + delim + '%.3f' + delim + '%s'
 
     # Loop emitting data.
-    _i = 0
     for y in range(srcwin[1], srcwin[1] + srcwin[3], skip):
 
         data = []
@@ -124,13 +123,12 @@ def gdal2xyz(srcfile, dstfile=None, clim_type=None, noData=-999, exclude=False, 
             # Exclude
             if exclude and noData in x_i_data:
                 continue
-            _i += 1
-    print(_i)
-            # band_str = band_format % tuple(x_i_data)
 
-            # line = frmt % (float(geo_x), float(geo_y), band_str)
+            band_str = band_format % tuple(x_i_data)
+
+            line = frmt % (float(geo_x), float(geo_y), band_str)
         
-            # dst_fh.write(line)
+            dst_fh.write(line)
 
 
 
@@ -140,6 +138,6 @@ if __name__ == '__main__':
     for i in range(1, 13):
         src_file = os.path.join(baseline_dir, 'tif', clim_type, '{}_{:02d}.tif'.format(clim_type, i))
         dest_file =  os.path.join(baseline_dir, 'csv', clim_type, '{}_{:02d}.csv'.format(clim_type, i))
-        
+
         # gdal2xyz(src_file, dstfile=dest_file, clim_type=clim_type, exclude=True)
         gdal2xyz(src_file, clim_type=clim_type, exclude=True)
