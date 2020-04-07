@@ -12,7 +12,7 @@ import earthpy.plot as ep
 
 import wclim_util as util
 
-from config import cmap, no_data_default, shape_file, module_dir, baseline_dir
+from config import CMAP, NO_DATA_DEFAULT, SHAPE_FILE, MODULE_DIR, BASELINE_DIR
 
 
 class WorldClimRasterCropper:
@@ -30,14 +30,14 @@ class WorldClimRasterCropper:
             raise Exception('Invalid month: {}'.format(month))
 
         self.no_data = 0
-        self.no_data_default = no_data_default
+        self.no_data_default = NO_DATA_DEFAULT
 
         self.ext = ext
         self.month = month
         self.clim_type = clim_type
 
     def _set_negative_color(self, color='w'):
-        plt.rcParams['image.cmap'] = cmap
+        plt.rcParams['image.cmap'] = CMAP
         current_cmap = plt.cm.get_cmap()
         current_cmap.set_under(color)
         return current_cmap
@@ -94,7 +94,7 @@ class WorldClimRasterCropper:
             # Scans dir and find file_name as substring from dir tree
             src_file = util.get_file_in_dir(file_name, src_dir)
 
-            clim_data, clim_metadata = self._pre_crop(src_file, shape_file)
+            clim_data, clim_metadata = self._pre_crop(src_file, SHAPE_FILE)
             clim_data_affine = clim_metadata['transform']
 
             # Create spatial plotting extent for the cropped layer
@@ -108,7 +108,7 @@ class WorldClimRasterCropper:
                     title=title, vmin=vmin, vmax=vmax)
 
             self._crop_extent(temp_file, clim_data, clim_metadata, clim_data_affine)
-            self._warp(temp_file, cropped_file, shape_file)
+            self._warp(temp_file, cropped_file, SHAPE_FILE)
 
             os.remove(temp_file)
         
@@ -123,8 +123,8 @@ if __name__ == "__main__":
     month = 1
     clim_type = 'prec'
     
-    src_dir = os.path.join(module_dir, '_files', 'baseline', 'wc2.0_30s_prec')
-    dest_dir = os.path.join(baseline_dir, clim_type)
+    src_dir = os.path.join(MODULE_DIR, '_files', 'baseline', 'wc2.0_30s_prec')
+    dest_dir = os.path.join(BASELINE_DIR, clim_type)
 
     cropper = WorldClimRasterCropper(clim_type=clim_type, month=month)
     cropper.crop(src_dir, dest_dir, vmin=0, vmax=1200, plot=True)

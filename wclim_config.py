@@ -4,25 +4,27 @@ import os
 from wclim_util import get_pybase_path, get_module_dir, _makedirs
 
 
+CLIM_TYPES = ['prec', 'tmax', 'tavg', 'tmin', 'dry']
+
 # PH extents in [ulx, uly, lrx, lry]
-ph_bounds =  [
+PH_BOUNDS =  [
     116.92500000000001,
     21.075000000000003,
     126.60833333333335,
     4.583333333333336
 ]
 
-cmap =  'RdYlGn'
+CMAP =  'RdYlGn'
 
-no_data_default = -999.0
+NO_DATA_DEFAULT = -999.0
 
-module_dir = get_module_dir()
-pybase_path = get_pybase_path()
+MODULE_DIR = get_module_dir()
+PYBASE_PATH = get_pybase_path()
 
-shape_file = os.path.join(module_dir, 'ph_shapefile', 'Country.shp')
+SHAPE_FILE = os.path.join(MODULE_DIR, 'ph_shapefile', 'Country.shp')
 
-script_dir = os.path.join(pybase_path, 'Scripts')
+SCRIPT_DIR = os.path.join(MODULE_DIR, 'Scripts')
 
-baseline_dir = os.path.join(module_dir, 'cropped', 'baseline')
-ft_2030_dir = os.path.join(module_dir, 'cropped', '2030')
-ft_2050_dir = os.path.join(module_dir, 'cropped', '2050')
+BASELINE_DIR = os.path.join(MODULE_DIR, 'cropped', 'baseline')
+FT_2030_DIR = os.path.join(MODULE_DIR, 'cropped', '2030')
+FT_2050_DIR = os.path.join(MODULE_DIR, 'cropped', '2050')
