@@ -29,36 +29,33 @@
 # DEALINGS IN THE SOFTWARE.
 ###############################################################################
 
-# NOTE: Program modified from gdal2xyz.py
-
-
 import sys
-import os
 
 from osgeo import gdal
-from wclim_config import baseline_dir
 
 try:
     import numpy as Numeric
 except ImportError:
     import Numeric
 
+# =============================================================================
 
-def gdal2xyz(srcfile, dstfile=None, clim_type=None, noData=-999, exclude=False, delim=','):
+# NOTE: Program modified from gdal2xyz.py
+def gdal2xyz(srcfile, dstfile=None, clipped=False, geoformat=False, apply_factor=None, mapper=None):
+    """
+    params:
+    clipped : bool : `True` means to exclude noData values in the output
+    geoformat: bool : enable geoloc formatting
+    mapper : function : set the mapper function for values. `None` evaluates to actual value
+    """
 
     srcwin = None
     skip = 1
     band_nums = []
-
-    gdal.AllRegister()
-
-    if clim_type is None or clim_type not in ['prec', 'tmax', 'tavg', 'tmin', 'dry']:
-        print('Unknown clim_type: %s.' % clim_type)
-        sys.exit(1)
+    delim = ','
 
     if band_nums == []:
         band_nums = [1]
-
     # Open source file.
     srcds = gdal.Open(srcfile)
     if srcds is None:
@@ -90,6 +87,10 @@ def gdal2xyz(srcfile, dstfile=None, clim_type=None, noData=-999, exclude=False, 
         band_format = (("%d" + delim) * len(bands)).rstrip(delim) + '\n'
     else:
         band_format = (("%g" + delim) * len(bands)).rstrip(delim) + '\n'
+    
+    # NOTE: Custom band format
+    if apply_factor != 1:
+        band_format = (("%g" + delim) * len(bands)).rstrip(delim) + '\n'
 
     # Setup an appropriate print format.
     if abs(gt[0]) < 180 and abs(gt[3]) < 180 \
@@ -99,7 +100,11 @@ def gdal2xyz(srcfile, dstfile=None, clim_type=None, noData=-999, exclude=False, 
     else:
         frmt = '%.3f' + delim + '%.3f' + delim + '%s'
 
-    # Loop emitting data.
+    # NOTE: Custom changes here
+
+    # noData 
+    noDataValue = srcds.GetRasterBand(1).GetNoDataValue()
+    
     for y in range(srcwin[1], srcwin[1] + srcwin[3], skip):
 
         data = []
@@ -120,24 +125,26 @@ def gdal2xyz(srcfile, dstfile=None, clim_type=None, noData=-999, exclude=False, 
             for i in range(len(bands)):
                 x_i_data.append(data[i][x_i])
 
-            # Exclude
-            if exclude and noData in x_i_data:
+            # NOTE: Exclude
+            if clipped and noDataValue in x_i_data:
                 continue
 
-            band_str = band_format % tuple(x_i_data)
+            # NOTE: Linear Mapping Values
+            if mapper:
+                mapped_data = []
+                for i_data in x_i_data:
+                    if apply_factor != 1:
+                        i_data *= apply_factor
+                    mapped_data.append(mapper(i_data))
+                band_str = band_format % tuple(mapped_data)
+            else:
+                if apply_factor != 1:
+                    x_i_data = [i* apply_factor for i in x_i_data]
+                band_str = band_format % tuple(x_i_data)
+            if geoformat:
+                line = frmt % (float(geo_x), float(geo_y), band_str)
+            else:
+                frmt = '%s' + delim + '%s' + delim + '%s'
+                line = frmt % (geo_x, geo_y, band_str)
 
-            line = frmt % (float(geo_x), float(geo_y), band_str)
-        
             dst_fh.write(line)
-
-
-
-if __name__ == '__main__':
-    clim_type = 'dry'
-
-    for i in range(1, 13):
-        src_file = os.path.join(baseline_dir, 'tif', clim_type, '{}_{:02d}.tif'.format(clim_type, i))
-        dest_file =  os.path.join(baseline_dir, 'csv', clim_type, '{}_{:02d}.csv'.format(clim_type, i))
-
-        # gdal2xyz(src_file, dstfile=dest_file, clim_type=clim_type, exclude=True)
-        gdal2xyz(src_file, clim_type=clim_type, exclude=True)

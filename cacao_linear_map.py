@@ -14,6 +14,7 @@
 
 
 import pandas as pd
+import numpy as np
 from math import inf, isinf
 
 
@@ -21,8 +22,8 @@ from math import inf, isinf
 class LinearMapper:
 
     def __init__(self, ctype):
-        self.ctypes = ['prec', 'tmin', 'tavg', 'tmax']
-        self.factors = [(100, 95), (95, 85), (85, 60), (60, 40), (25, 0)]
+        self.ctypes = ['prec', 'tmin', 'tmean', 'tmax']
+        self.ratings = [(100, 95), (95, 85), (85, 60), (60, 40), (25, 0)]
         self.ranges = []
 
         if ctype not in self.ctypes:
@@ -30,6 +31,18 @@ class LinearMapper:
 
         self.ctype = ctype
         self.conversion = self.set_conversion_table()
+
+    @staticmethod
+    def _is_in_range(range, value):
+        if range[1] > range[0]:
+            if value >= range[0] and value <= range[1]:
+                return True
+            return False
+        else:
+            if value >= range[1] and value <= range[0]:
+                return True
+            return False
+
 
     def get_ranges(self):
         ranges = None
@@ -50,7 +63,7 @@ class LinearMapper:
                 [(13, 10)],
                 [(10, -inf)],  # NOTE: < 10, For extrapolation 
             ]
-        elif self.ctype == 'tavg':
+        elif self.ctype == 'tmean':
             ranges =  [
                 [(26, 25), (26, 28)],
                 [(25, 23), (28, 29)],
@@ -67,48 +80,40 @@ class LinearMapper:
 
         return ranges
 
+
     def set_conversion_table(self):
         ranges = self.get_ranges()
 
         factor_dict = {}
-        factor_dict['factors'] = self.factors[:len(ranges)]
+        factor_dict['ratings'] = self.ratings[:len(ranges)]
         factor_dict['ranges'] = ranges
 
         return pd.DataFrame(factor_dict)
+
 
     def get_mapping_factors(self, value):
         factor = None
         range = None
 
-        def is_in_range(range, value):
-            if range[1] > range[0]:
-                if value >= range[0] and value <= range[1]:
-                    return True
-                return False
-            else:
-                if value >= range[1] and value <= range[0]:
-                    return True
-                return False
-
-
         for c_index, c_col in self.conversion.iterrows():
             ranges = c_col['ranges']
 
             for r_index, _range in enumerate(ranges):
-                if is_in_range(_range, value):
+                if self._is_in_range(_range, value):
                     if isinf(_range[0]) or isinf(_range[1]):
                         if c_index == 0:
-                            factor = self.conversion['factors'][1]
+                            factor = self.conversion['ratings'][1]
                             range = self.conversion['ranges'][1][r_index]
                         else:
-                            factor = self.conversion['factors'][c_index-1]
+                            factor = self.conversion['ratings'][c_index-1]
                             range = self.conversion['ranges'][c_index-1][r_index]
                     else:
-                        factor = self.conversion['factors'][c_index]
+                        factor = self.conversion['ratings'][c_index]
                         range = self.conversion['ranges'][c_index][r_index]
                     return factor, range
 
-        raise Exception('Mapping factors error')
+        raise Exception('Mapping ratings error')
+
 
     def resolve_delta(self, value):
         if self.ctype == 'prec':
@@ -123,30 +128,69 @@ class LinearMapper:
             elif value > 30:
                 return 35
         return 0
+    
 
-    def get_mapped_value(self, value):
+    def get_mapped_values(self, values):
+        import sys
+        result = np.zeros(len(values))
 
-        factor, range = self.get_mapping_factors(value)
-        delta = self.resolve_delta(value)
+        for c_index, c_col in self.conversion.iterrows():
+            ranges = c_col['ranges']
+            
+            for r_index, _range in enumerate(ranges):
+                bounds = sorted(list(_range))
+                
+                if bounds[0] == bounds[1]:
+                    continue
+                indexes = values.between(bounds[0], bounds[1])
+                if not indexes.any():
+                    continue
 
+                if isinf(_range[0]) or isinf(_range[1]):
+                    if c_index == 0:
+                        factor = self.conversion['ratings'][1]
+                        range = self.conversion['ranges'][1][r_index]
+                    else:
+                        factor = self.conversion['ratings'][c_index-1]
+                        range = self.conversion['ranges'][c_index-1][r_index]
+                else:
+                    factor = self.conversion['ratings'][c_index]
+                    range = self.conversion['ranges'][c_index][r_index]
+
+                for i, value in values[indexes].items():
+                    delta = self.resolve_delta(value)
+                    result[i] = self._map_value(value, factor, range, delta)
+
+        return pd.Series(result)
+
+
+    def _map_value(self, value, factor, range, delta):
         y1, y2 = factor[0], factor[1]
         x1, x2 = range[0], range[1]
-
-        m_val = y2 + (((y1-y2)*(value-x2))/(x1-x2))
+        
+        try:
+            m_val = y2 + (((y1-y2)*(value-x2))/(x1-x2))
+        except ZeroDivisionError:
+            raise 
 
         if delta:
             m_val -= delta
 
         if m_val < 0:
             m_val = 0
-        elif m_val > 100:
-            m_val = 100
 
         return round(m_val, 2)
 
 
+    def get_mapped_value(self, value):
+        factor, range = self.get_mapping_factors(value)
+        delta = self.resolve_delta(value)
+
+        return self._map_value(value, factor, range, delta)
+
+
 if __name__ == "__main__":
     mapper = LinearMapper('prec')
-    val = 4400.00001
-    r = mapper.get_mapped_value(val)
+    vals = pd.Series([4400.00001, 1900.00])
+    r = mapper.get_mapped_values(vals)
     
