@@ -347,6 +347,25 @@ def _bulk_future_algebra(var, period):
 
     raster_algebra(output_file, input_files, calc_type='mean')
 
+def _get_title(var, period):
+    titles = {
+        'prec': 'Precipitation ',
+        'tmax': 'Max Temperature ',
+        'tmean': 'Mean Temperature ',
+        'tmin': 'Min Temperature '
+    }
+    title = titles[var]
+
+    if period == 'baseline':
+        title += '(Near-Current)'
+    elif period == '2030s':
+        title += f'(2030)'
+    elif period == '2050s':
+        title += f'(2050)'
+
+    label = 'mm' if var == 'prec' else 'Deg C.'
+
+    return title, label
 
 def main():
     var = 'prec'
@@ -388,8 +407,11 @@ def main():
     # Get Raster Statistics
     # var = 'tmin'
     # period = 'baseline'
+    # model = 'miroc_miroc5'
+    # calc_type = _get_calc_type(var)
     # src_file = os.path.join(CF.CROPPED_DIR, period, var, model, f'{var}_{calc_type}.tif')
-    # sample_tif =  os.path.join(CF.CROPPED_DIR, period, var, f'{tmin}_mean_{period}.tif'
+    # sample_tif =  os.path.join(CF.CROPPED_DIR, period, var, f'{var}_mean_{period}.tif')
+    # sample_tif = r'F:\thesis\cacao_suitability\cropped\2030s\prec\prec_mean_2030s.tif'
     # raster_info(sample_tif)
 
 
@@ -401,8 +423,9 @@ def main():
 
     # var = 'tmin'
     # period = 'baseline'
+    # title, label = _get_title(var, period)
     # src_file = os.path.join(CF.CROPPED_DIR, period, var, f'{var}_mean_{period}.tif')
-    # raster_plot(src_file, var, title='Min Temperature (Near-Current)', label='Deg C.')
+    # raster_plot(src_file, var, title=title, label=label)
 
 
     # ----------------------
@@ -444,12 +467,12 @@ def main():
     # 10. LINDX REPLOT
     # ----------------------
     # BASE
-    # period = '2050s'
-    # # file = os.path.join(CF.CROPPED_DIR, period, f'{period}_lindx.tif')
+    # period = 'baseline'
+    # file = os.path.join(CF.CROPPED_DIR, period, f'{period}_lindx.tif')
     # # MODELED
     # file = os.path.join(CF.CROPPED_DIR, period, f'model_adam_swish_DFF_lindx.csv')
-    # # PLOT
-    # raster_plot(file, linx=True, title="2050s Suitability \n(Modeled)")
+    # PLOT
+    # raster_plot(file, linx=True, title="Near-Current Suitability \n(Modeled)")
 
     # get_lindx_csv_stat(file)
 
