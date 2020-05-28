@@ -26,9 +26,15 @@ NO_DATA_DEFAULT = -999.0
 # dirs
 MODULE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-SHAPE_FILE = os.path.join(MODULE_DIR, 'ph_shapefile', 'Country.shp')
+SHAPE_FILE = os.path.join(MODULE_DIR, 'ph_shapefile', 'country', 'Country.shp')
 
 RASTER_DIR = os.path.join(MODULE_DIR, 'raster_files')
 CROPPED_DIR = os.path.join(MODULE_DIR, 'cropped')
 
 MODELS_DIR = os.path.join(MODULE_DIR, 'results', 'models', 'actual_models', 'artifacts')
+
+LINDX_DIR = os.path.join(MODULE_DIR, 'land_indices')
+
+ANN_DIR = os.path.join(MODULE_DIR, 'cacao_ann')
+
+CLIM_VAR_DIR = os.path.join(MODULE_DIR, 'climate_vars')

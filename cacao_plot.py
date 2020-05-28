@@ -6,6 +6,9 @@ from osgeo import gdal
 from matplotlib.colors import LinearSegmentedColormap
 
 
+gdal.UseExceptions()
+
+
 def _get_cb_params(var):
     S1a = '#28a014'
     S1b = '#8cd746'
@@ -41,15 +44,15 @@ def _get_bounds(ranges):
     return sorted(range_lst)
 
 
-def plot(input_file, var=None, title=None, vmin=-0.9, label=None, linx=False, apply_factor=None):
+def plot(input_file, var=None, vmin=-0.9, title=None, label=None, linx=False, factor=1, raw=False):
     if not linx and var is None:
         raise ValueError(f"Var type needed for non-LINDX plot")
-    
+
     ds = gdal.Open(input_file)
-    if apply_factor == 1:
-        ds_arr = np.array(ds.GetRasterBand(1).ReadAsArray()) 
+    if factor == 1:
+        ds_arr = np.array(ds.GetRasterBand(1).ReadAsArray())
     else:
-        ds_arr = np.array(ds.GetRasterBand(1).ReadAsArray()) * apply_factor
+        ds_arr = np.array(ds.GetRasterBand(1).ReadAsArray()) * factor
 
     fig, ax1 = plt.subplots(1,1)
 
@@ -59,23 +62,36 @@ def plot(input_file, var=None, title=None, vmin=-0.9, label=None, linx=False, ap
         cmap = mpl.cm.RdYlGn
         norm = mpl.colors.BoundaryNorm(bounds, cmap.N)
     else:
-        bounds, colors = _get_cb_params(var)
+        if not raw:
+            bounds, colors = _get_cb_params(var)
 
-        cmap = LinearSegmentedColormap.from_list(
-            'custom', colors, N=len(colors))
-        norm = mpl.colors.BoundaryNorm(bounds, cmap.N)
+            cmap = LinearSegmentedColormap.from_list(
+                'custom', colors, N=len(colors))
+            norm = mpl.colors.BoundaryNorm(bounds, cmap.N)
+        else:
+            cmap = mpl.cm.RdYlGn
+            norm = None
+
 
     cmap.set_under(color='black')
 
-    im = ax1.imshow(ds_arr, cmap=cmap, norm=norm, vmin=vmin, interpolation='nearest')
+    nrows, ncols = ds_arr.shape
+    x0, dx, dxdy, y0, dydx, dy = ds.GetGeoTransform()
+
+    x1 = x0 + dx * ncols
+    y1 = y0 + dy * nrows
+
+    extent = [x0, x1, y1, y0]
+
+    im = ax1.imshow(ds_arr, cmap=cmap, norm=norm, vmin=vmin, extent=extent, interpolation='nearest')
     cb = fig.colorbar(im, ax=ax1)
 
     fg_color = 'white'
     bg_color = 'black'
 
-    # IMSHOW 
-    ax1.axes.get_xaxis().set_visible(False)
-    ax1.axes.get_yaxis().set_visible(False)
+    # IMSHOW
+    # ax1.axes.get_xaxis().set_visible(False)
+    # ax1.axes.get_yaxis().set_visible(False)
 
     # set title plus title color
     ax1.set_title(title, color=fg_color)
@@ -88,7 +104,7 @@ def plot(input_file, var=None, title=None, vmin=-0.9, label=None, linx=False, ap
 
     # set imshow outline
     # for spine in im.axes.spines.values():
-    #     spine.set_edgecolor(fg_color)    
+    #     spine.set_edgecolor(fg_color)
 
     # COLORBAR
     # set colorbar label plus label color
@@ -97,15 +113,111 @@ def plot(input_file, var=None, title=None, vmin=-0.9, label=None, linx=False, ap
     # set colorbar tick color
     cb.ax.yaxis.set_tick_params(color=fg_color)
 
-    # set colorbar edgecolor 
+    # set colorbar edgecolor
     cb.outline.set_edgecolor(fg_color)
 
     # set colorbar ticklabels
     plt.setp(plt.getp(cb.ax.axes, 'yticklabels'), color=fg_color)
-    
+
     fig.patch.set_facecolor(bg_color)
-    
+
     plt.tight_layout()
     plt.show()
     # fig.savefig('sasd.png', dpi=200)
 
+
+def plot_delta(input_file, var=None, vmin=-1264, vmax=2355, title=None, label=None):
+    ds = gdal.Open(input_file)
+    ds_arr = np.array(ds.GetRasterBand(1).ReadAsArray()) 
+
+    fig, ax1 = plt.subplots(1,1)
+
+    def _gen_bounds(diff=1):
+        _under = []
+        _over = []
+
+        i = 0
+        while True:
+            i -= diff
+            _under.append(i)
+            if i < vmin:
+                break
+
+        j = 0
+        while True:
+            j += diff
+            _over.append(j)
+            if j > vmax:
+                break
+
+        len_diff = len(_over) - len(_under)
+        for _ in range(abs(len_diff)):
+            if len_diff > 0:
+                i -= diff
+                _under.append(i)
+            else:
+                j += diff
+                _over.append(j)
+
+
+        result = [0, 1]
+        result.extend(_under)
+        result.extend(_over)
+
+        return sorted(result)
+
+    # TODO Plotting on TwoSlopeForm
+    cmap = mpl.cm.RdBu
+    norm = mpl.colors.TwoSlopeNorm(0, vmin=-20)
+
+    cmap.set_under(color='black')
+
+    nrows, ncols = ds_arr.shape
+    x0, dx, dxdy, y0, dydx, dy = ds.GetGeoTransform()
+
+    x1 = x0 + dx * ncols
+    y1 = y0 + dy * nrows
+
+    extent = [x0, x1, y1, y0]
+
+    im = ax1.imshow(ds_arr, cmap=cmap, norm=norm, vmin=vmin, extent=extent, interpolation='nearest')
+    cb = fig.colorbar(im, ax=ax1)
+
+    fg_color = 'white'
+    bg_color = 'black'
+
+    # IMSHOW
+    # ax1.axes.get_xaxis().set_visible(False)
+    # ax1.axes.get_yaxis().set_visible(False)
+
+    # set title plus title color
+    ax1.set_title(title, color=fg_color)
+
+    # set figure facecolor
+    ax1.patch.set_facecolor(bg_color)
+
+    # set tick and ticklabel color
+    im.axes.tick_params(color=fg_color, labelcolor=fg_color)
+
+    # set imshow outline
+    # for spine in im.axes.spines.values():
+    #     spine.set_edgecolor(fg_color)
+
+    # COLORBAR
+    # set colorbar label plus label color
+    cb.set_label(label, color=fg_color)
+
+    # set colorbar tick color
+    cb.ax.yaxis.set_tick_params(color=fg_color)
+
+    # set colorbar edgecolor
+    cb.outline.set_edgecolor(fg_color)
+
+    # set colorbar ticklabels
+    plt.setp(plt.getp(cb.ax.axes, 'yticklabels'), color=fg_color)
+
+    fig.patch.set_facecolor(bg_color)
+
+    plt.tight_layout()
+    plt.show()
+    # fig.savefig('sasd.png', dpi=200)

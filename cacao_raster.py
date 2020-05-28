@@ -37,9 +37,9 @@ def gdal_merge(out_filename, input_files, out_format="GTiff", ul_lr=None, a_noda
 
     ul_lr = " ".join(str(v) for v in ul_lr)
     input_files = " ".join(input_files)
-    
+
     quiet = '' if quiet else '-v'
-    
+
     cmd = "python gdal_merge.py -o {o} -of {of} -tap {q} -ul_lr {ul_lr} -a_nodata {a_nodata} {input_files}".format(
         o=out_filename, of=out_format, q=quiet, ul_lr=ul_lr, a_nodata=a_nodata, input_files=input_files)
 

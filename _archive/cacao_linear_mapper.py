@@ -5,6 +5,14 @@
 # into the interval [c, d]. The formula to calculate y is:
 
 
+# TODO: Resolve for
+# (DONE) prec,
+# (TODO) PET,
+# (DONE) mean_annual_temp,
+# (DONE) mean_annual_maxtemp,
+# (DONE) mean_annual_mintemp
+
+
 import pandas as pd
 import numpy as np
 from math import inf, isinf
@@ -61,7 +69,7 @@ class LinearMapper:
                 [(25, 23), (28, 29)],
                 [(23, 22), (29, 30)],
                 [(22, 21), (30, inf)],  # NOTE: Linear Mapped, none existing. Handle thru delta
-                [(21, -inf), (0, 0)],
+                [(21, -inf), (0, 0)],   
             ]
         elif self.ctype == 'tmax':
             ranges = [
@@ -110,72 +118,59 @@ class LinearMapper:
     def resolve_delta(self, value):
         if self.ctype == 'prec':
             if value < 1200 or value > 4400:
-                return 15
+                return 15 
         elif self.ctype == 'tmin':
             if value < 10:
-                return 15
+                return 15 
         elif self.ctype == 'tavg':
             if value < 21:
                 return 15
             elif value > 30:
                 return 35
         return 0
-
+    
 
     def get_mapped_values(self, values):
-
-        def get_factor_range(_range):
-            if isinf(_range[0]) or isinf(_range[1]):
-                if c_index == 0:
-                    factor = self.conversion['ratings'][1]
-                    ranges = self.conversion['ranges'][1][r_index]
-                else:
-                    factor = self.conversion['ratings'][c_index-1]
-                    ranges = self.conversion['ranges'][c_index-1][r_index]
-            else:
-                factor = self.conversion['ratings'][c_index]
-                ranges = self.conversion['ranges'][c_index][r_index]
-
-            return factor, ranges
-
-
-        row, col = values.shape
-        result = np.ndarray(shape=(row, col), dtype=np.float32)
+        result = np.zeros(len(values))
 
         for c_index, c_col in self.conversion.iterrows():
             ranges = c_col['ranges']
-
+            
             for r_index, _range in enumerate(ranges):
-                lbound, rbound = sorted(list(_range))
-
-                if lbound == rbound:
+                bounds = sorted(list(_range))
+                
+                if bounds[0] == bounds[1]:
                     continue
-                indexes = (values >= lbound) & (values <= rbound)
+                indexes = values.between(bounds[0], bounds[1])
                 if not indexes.any():
                     continue
 
-                factor, ranges = get_factor_range(_range)
+                if isinf(_range[0]) or isinf(_range[1]):
+                    if c_index == 0:
+                        factor = self.conversion['ratings'][1]
+                        range = self.conversion['ranges'][1][r_index]
+                    else:
+                        factor = self.conversion['ratings'][c_index-1]
+                        range = self.conversion['ranges'][c_index-1][r_index]
+                else:
+                    factor = self.conversion['ratings'][c_index]
+                    range = self.conversion['ranges'][c_index][r_index]
 
-                for y in range(row):
-                    for x in range(col):
-                        if not indexes[y][x]:
-                            continue
-                        value = values[y][x]
-                        delta = self.resolve_delta(value)
+                for i, value in values[indexes].items():
+                    delta = self.resolve_delta(value)
+                    result[i] = self._map_value(value, factor, range, delta)
 
-                        result[y][x] = self._map_value(value, factor, ranges, delta)
-
-        return result
+        return pd.Series(result)
 
 
     def _map_value(self, value, factor, range, delta):
         y1, y2 = factor[0], factor[1]
         x1, x2 = range[0], range[1]
-
+        
         try:
             m_val = y2 + (((y1-y2)*(value-x2))/(x1-x2))
         except ZeroDivisionError:
-            raise
+            raise 
 
         if delta:
             m_val -= delta
@@ -197,4 +192,4 @@ if __name__ == "__main__":
     mapper = LinearMapper('prec')
     vals = pd.Series([4400.00001, 1900.00])
     r = mapper.get_mapped_values(vals)
-
+    
