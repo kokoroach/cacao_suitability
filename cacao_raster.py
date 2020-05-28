@@ -1,15 +1,25 @@
 import os
-import sys
+from sys import platform
 
-try:
+file_specimen = 'gdalcompare.py'
+
+if platform == "linux" or platform == "linux2":
+    paths = os.environ['PATH']
+    for path in paths.split(':'):
+        specimen_path = os.path.join(path, file_specimen)
+        if os.path.exists(specimen_path):
+            break
+elif platform == "win32":
     import osgeo
     osgeo_dir = os.path.dirname(osgeo.__file__)
     script_dir = os.path.join(osgeo_dir, 'scripts')
+    specimen_path = os.path.join(script_dir, file_specimen)
 
-    if not os.listdir(script_dir):
-        raise Exception("GDAL scripts not found")
+try:
+    if not os.path.exists(specimen_path):
+        raise Exception
 except Exception as exc:
-    sys.exit(exc)
+    exit(exc)
 
 
 def doit(cmd):
