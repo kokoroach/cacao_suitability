@@ -60,9 +60,16 @@ def raster_plot_lindx(period, predicted=False, with_border=False, between=None):
     else:
         input_file = os.path.join(CF.LINDX_DIR, period, f'{period}_lindx.tif')
 
-    title = f'LSI: {period}'
-    label = 'Land Suitability Index'
+    if period == 'baseline':
+        period = 'Near-Current'
 
+    _model = 'ANN' if predicted else 'ACTUAL'
+    if between is not None:
+        title = f'Optimal LSI:  {period} ({_model})'
+    else:
+        title = f'Land Suitability Index: {period} ({_model})'
+
+    label = 'LSI'
     _plot.plot(input_file, title=title, label=label, linx=True, with_border=with_border, between=between)
 
 
@@ -88,6 +95,7 @@ def _pre_delta_details(var, period, type):
     details = {
         'input_file': input_file,
         'var': var,
+        'period': period,
         'data': data,
         'title': title,
         'label': label,
@@ -666,8 +674,10 @@ if __name__ == '__main__':
     # raster_plot(var, period, raw=True)
 
     # B. Delta TIF
-    # raster_delta_plot(var='tmean', period='2050s')
-    # raster_delta_ploth(var='prec', period='2050s')
+    # var = 'prec'
+    # period = '2030s'
+    # raster_delta_ploth(var=var, period=period)
+    # raster_delta_plot(var=var, period=period)
 
 
     # ----------------------
@@ -692,7 +702,7 @@ if __name__ == '__main__':
     # ----------------------
     # period = '2050s'
     # raster_plot_lindx(period,
-    #     predicted=False,
+    #     predicted=True,
     #     with_border=True,
     #     between=(75, 100)
     # )

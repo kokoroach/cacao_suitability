@@ -1,3 +1,4 @@
+import os
 import fiona
 import numpy as np
 import matplotlib as mpl
@@ -164,19 +165,19 @@ def _get_bounds_delta(var, vmin=None, vmax=None):
     spacing = 200 if var == 'prec' else 0.5
 
     # define the bins and normalize and forcing 0 to be part of the colorbar!
-    bounds = []
+    bounds = [0]
     i = 0
     while True:
+        i += spacing
         if i <= vmax:
             bounds.append(i)
-            i += spacing
         else:
             break
     i = 0
     while True:
+        i -= spacing
         if i >= vmin:
             bounds.append(i)
-            i -= spacing
         else:
             break
 
@@ -232,7 +233,8 @@ def plot_histogram(data, var=None, title=None, label=None, vmax=None, vmin=None,
 
     # MEAN
     min_lim, max_xlim = plt.xlim()
-    plt.text(max_xlim*0.05, vmean*1.1, 'Mean: {:.3f}'.format(vmean), alpha=0.5)
+    y_factor = 1.1 if var != 'prec' else 1.5
+    plt.text(max_xlim*0.05, vmean * y_factor, 'Mean: {:.3f}'.format(vmean), alpha=0.5)
     plt.axhline(vmean, color='k', linestyle='dashed', linewidth=1, alpha=0.5)
 
     # EXTEND
@@ -254,6 +256,7 @@ def plot_delta(input_file, var=None, vmin=None, vmax=None, title=None, label=Non
     cmap = cmap.from_list('Custom cmap', cmaplist, cmap.N)
 
     bounds = _get_bounds_delta(var, vmin=vmin, vmax=vmax)
+
     norm = BoundaryNorm(bounds, cmap.N)
 
     cmap.set_under(color='black')
