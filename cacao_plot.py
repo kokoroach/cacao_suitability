@@ -1,9 +1,15 @@
+import fiona
 import numpy as np
 import matplotlib as mpl
 import matplotlib.pyplot as plt
+import cacao_config as CF
 
 from osgeo import gdal
-from matplotlib.colors import LinearSegmentedColormap
+from matplotlib import cm
+from matplotlib.colors import LinearSegmentedColormap, BoundaryNorm
+from matplotlib.ticker import PercentFormatter
+from descartes import PolygonPatch
+from shapely.geometry import Polygon
 
 
 gdal.UseExceptions()
@@ -44,7 +50,7 @@ def _get_bounds(ranges):
     return sorted(range_lst)
 
 
-def plot(input_file, var=None, vmin=-0.9, title=None, label=None, linx=False, factor=1, raw=False):
+def plot(input_file, var=None, vmin=-1, title=None, label=None, linx=False, factor=1, raw=False, with_border=False, between=None):
     if not linx and var is None:
         raise ValueError(f"Var type needed for non-LINDX plot")
 
@@ -57,10 +63,25 @@ def plot(input_file, var=None, vmin=-0.9, title=None, label=None, linx=False, fa
     fig, ax1 = plt.subplots(1,1)
 
     if linx:
-        # Assertive remap
-        bounds = [0, 12.5, 25, 50, 75, 100]
-        cmap = mpl.cm.RdYlGn
-        norm = mpl.colors.BoundaryNorm(bounds, cmap.N)
+        if between:
+            lbound, rbound = tuple(list(sorted(between)))
+            ds_arr[(ds_arr <= lbound) & (ds_arr > rbound) & (ds_arr != -999)] = 0
+
+            if lbound == 0:
+                bounds = [-0.5, lbound, rbound]
+            else:
+                bounds = [0, lbound, rbound]
+
+            colors = ['#d8ebb5', '#2b580c']
+            cmap = LinearSegmentedColormap.from_list(
+                'custom', colors, N=len(colors))
+            norm = mpl.colors.BoundaryNorm(bounds, cmap.N)
+
+        else:
+            # Assertive remap
+            bounds = [0, 12.5, 25, 50, 75, 100]
+            cmap = cm.get_cmap('RdYlGn')
+            norm = mpl.colors.BoundaryNorm(bounds, cmap.N)
     else:
         if not raw:
             bounds, colors = _get_cb_params(var)
@@ -69,14 +90,14 @@ def plot(input_file, var=None, vmin=-0.9, title=None, label=None, linx=False, fa
                 'custom', colors, N=len(colors))
             norm = mpl.colors.BoundaryNorm(bounds, cmap.N)
         else:
-            cmap = mpl.cm.RdYlGn
+            cmap = cm.get_cmap('RdYlGn')
             norm = None
 
 
     cmap.set_under(color='black')
 
     nrows, ncols = ds_arr.shape
-    x0, dx, dxdy, y0, dydx, dy = ds.GetGeoTransform()
+    x0, dx, _, y0, _, dy = ds.GetGeoTransform()
 
     x1 = x0 + dx * ncols
     y1 = y0 + dy * nrows
@@ -121,66 +142,131 @@ def plot(input_file, var=None, vmin=-0.9, title=None, label=None, linx=False, fa
 
     fig.patch.set_facecolor(bg_color)
 
+
+    if with_border:
+        from shapely.geometry import shape
+
+        with fiona.open(CF.PROVINCIAL_BORDER) as shapefile:
+            # for feature in shapefile:
+            #     print(feature["properties"]["PROVINCE"])
+            features = ((feature["geometry"], feature["properties"]["PROVINCE"]) for feature in shapefile)
+
+            for feature, name in features:
+                patch = PolygonPatch(feature, edgecolor="black", facecolor="none", linewidth=0.5, alpha=0.8)
+                ax1.add_patch(patch)
+
+
     plt.tight_layout()
     plt.show()
-    # fig.savefig('sasd.png', dpi=200)
 
 
-def plot_delta(input_file, var=None, vmin=-1264, vmax=2355, title=None, label=None):
+def _get_bounds_delta(var, vmin=None, vmax=None):
+    spacing = 200 if var == 'prec' else 0.5
+
+    # define the bins and normalize and forcing 0 to be part of the colorbar!
+    bounds = []
+    i = 0
+    while True:
+        if i <= vmax:
+            bounds.append(i)
+            i += spacing
+        else:
+            break
+    i = 0
+    while True:
+        if i >= vmin:
+            bounds.append(i)
+            i -= spacing
+        else:
+            break
+
+    return sorted(bounds)
+
+
+def plot_histogram(data, var=None, title=None, label=None, vmax=None, vmin=None, vmean=None, **kwargs):
+
+    def set_bar_labels(patches):
+        # For each bar: Place a label
+
+        for rect in patches:
+            # Get X and Y placement of label from rect.
+            x_value = rect.get_width()
+            y_value = rect.get_y() + rect.get_height() / 2
+
+            # Number of points between bar and label. Change to your liking.
+            space = 5
+            # Vertical alignment for positive values
+            ha = 'left'
+
+            # Use X value as label and format number with one decimal place
+            label = x_value * 100
+            if round(label, 1) == 0.0:
+                continue
+
+            label = "{:.1f}%".format(label)
+
+            # Create annotation
+            plt.annotate(
+                label,                      # Use `label` as label
+                (x_value, y_value),         # Place label at end of the bar
+                xytext=(space, 0),          # Horizontally shift label by `space`
+                textcoords="offset points", # Interpret `xytext` as offset in points
+                va='center',                # Vertically center label
+                ha=ha)                      # Horizontally align label differently for
+                                            # positive and negative values.
+
+    fig, ax1 = plt.subplots(1, 1)
+
+    fig.suptitle(title)
+
+    ax1.set_ylabel(f'Change in {label}')
+    ax1.set_xlabel('Percentage')
+
+    bins = _get_bounds_delta(var, vmin=vmin, vmax=vmax)
+
+    plt.hist(data, bins, weights=np.ones(len(data)) / len(data), range=[vmin, vmax], orientation='horizontal')
+
+    # LABELS
+    set_bar_labels(ax1.patches)
+    plt.gca().xaxis.set_major_formatter(PercentFormatter(1))
+
+    # MEAN
+    min_lim, max_xlim = plt.xlim()
+    plt.text(max_xlim*0.05, vmean*1.1, 'Mean: {:.3f}'.format(vmean), alpha=0.5)
+    plt.axhline(vmean, color='k', linestyle='dashed', linewidth=1, alpha=0.5)
+
+    # EXTEND
+    ax1.set_xlim(min_lim, max_xlim + 0.05)
+    plt.gcf().subplots_adjust(left=0.15)
+    plt.show()
+
+
+def plot_delta(input_file, var=None, vmin=None, vmax=None, title=None, label=None, **kwargs):
     ds = gdal.Open(input_file)
-    ds_arr = np.array(ds.GetRasterBand(1).ReadAsArray()) 
+    ds_arr = np.array(ds.GetRasterBand(1).ReadAsArray())
 
     fig, ax1 = plt.subplots(1,1)
 
-    def _gen_bounds(diff=1):
-        _under = []
-        _over = []
+    cmap = cm.get_cmap('RdBu_r')
+    # extract all colors from the .jet map
+    cmaplist = [cmap(i) for i in range(cmap.N)]
+    # create the new map
+    cmap = cmap.from_list('Custom cmap', cmaplist, cmap.N)
 
-        i = 0
-        while True:
-            i -= diff
-            _under.append(i)
-            if i < vmin:
-                break
-
-        j = 0
-        while True:
-            j += diff
-            _over.append(j)
-            if j > vmax:
-                break
-
-        len_diff = len(_over) - len(_under)
-        for _ in range(abs(len_diff)):
-            if len_diff > 0:
-                i -= diff
-                _under.append(i)
-            else:
-                j += diff
-                _over.append(j)
-
-
-        result = [0, 1]
-        result.extend(_under)
-        result.extend(_over)
-
-        return sorted(result)
-
-    # TODO Plotting on TwoSlopeForm
-    cmap = mpl.cm.RdBu
-    norm = mpl.colors.TwoSlopeNorm(0, vmin=-20)
+    bounds = _get_bounds_delta(var, vmin=vmin, vmax=vmax)
+    norm = BoundaryNorm(bounds, cmap.N)
 
     cmap.set_under(color='black')
 
     nrows, ncols = ds_arr.shape
-    x0, dx, dxdy, y0, dydx, dy = ds.GetGeoTransform()
+    x0, dx, _, y0, _, dy = ds.GetGeoTransform()
 
     x1 = x0 + dx * ncols
     y1 = y0 + dy * nrows
 
     extent = [x0, x1, y1, y0]
 
-    im = ax1.imshow(ds_arr, cmap=cmap, norm=norm, vmin=vmin, extent=extent, interpolation='nearest')
+    im = ax1.imshow(ds_arr, cmap=cmap, norm=norm, vmin=vmin, vmax=vmax, extent=extent, interpolation='nearest')
     cb = fig.colorbar(im, ax=ax1)
 
     fg_color = 'white'
@@ -217,7 +303,5 @@ def plot_delta(input_file, var=None, vmin=-1264, vmax=2355, title=None, label=No
     plt.setp(plt.getp(cb.ax.axes, 'yticklabels'), color=fg_color)
 
     fig.patch.set_facecolor(bg_color)
-
     plt.tight_layout()
     plt.show()
-    # fig.savefig('sasd.png', dpi=200)

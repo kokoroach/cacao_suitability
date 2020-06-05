@@ -27,6 +27,7 @@ NO_DATA_DEFAULT = -999.0
 MODULE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 SHAPE_FILE = os.path.join(MODULE_DIR, 'ph_shapefile', 'country', 'Country.shp')
+PROVINCIAL_BORDER = os.path.join(MODULE_DIR, 'ph_shapefile', 'provinces', 'Provinces.shp')
 
 RASTER_DIR = os.path.join(MODULE_DIR, 'raster_files')
 CROPPED_DIR = os.path.join(MODULE_DIR, 'cropped')

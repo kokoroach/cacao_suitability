@@ -47,16 +47,23 @@ def raster_merge(output_file, input_files, out_format="GTiff", bounds=CF.PH_BOUN
         return
 
 
-def raster_info(input_file, stats=False, as_json=False):
+def raster_info(input_file, stats=False, histogram=False):
     # NOTE: Disable the creation of aux.xml file
     gdal.SetConfigOption('GDAL_PAM_ENABLED', 'NO')
 
-    if as_json:
-        info = gdal.Info(input_file, stats=stats, deserialize=True)
-        return info
+    return gdal.Info(input_file, stats=stats, reportHistograms=histogram, format='json')
+
+
+def raster_plot_lindx(period, predicted=False, with_border=False, between=None):
+    if predicted:
+        input_file = os.path.join(CF.LINDX_DIR, period, f'{period}_lindx_predicted.tif')
     else:
-        info = gdal.Info(input_file, stats=stats)
-        print(info)
+        input_file = os.path.join(CF.LINDX_DIR, period, f'{period}_lindx.tif')
+
+    title = f'LSI: {period}'
+    label = 'Land Suitability Index'
+
+    _plot.plot(input_file, title=title, label=label, linx=True, with_border=with_border, between=between)
 
 
 def raster_plot(var, period, raw=False):
@@ -64,16 +71,43 @@ def raster_plot(var, period, raw=False):
     title, label = _get_plot_details(var, period)
     data_factor = _get_data_factor(var, period)
 
-    _plot.plot(input_file, var=var, title=title, label=label, factor=data_factor, raw=raw)
+    _plot.plot(input_file, var=var, title=title, label=label, factor=data_factor, linx=lindx, raw=raw)
 
-def raster_delta_plot(var, period):
+
+def _pre_delta_details(var, period, type):
     input_file = os.path.join(CF.CLIM_VAR_DIR, 'clim_delta', f'delta_{var}_{period}.tif')
     title, label = _get_plot_details(var, period)
-    title = f'DELTA {title}'
+    title = f'DELTA: {title}'
 
-    # raster_info(input_file, )
+    data, no_data = _get_raster_data(input_file)
+    data = data.flatten()
+    data = data[data != no_data]
 
-    _plot.plot_delta(input_file, var=var, title=title, label=label)
+    _min, _max, _mean = _get_stats(data)
+
+    details = {
+        'input_file': input_file,
+        'var': var,
+        'data': data,
+        'title': title,
+        'label': label,
+        'title': title,
+        'vmax': _max,
+        'vmean': _mean,
+        'vmin': _min
+    }
+
+    return details
+
+
+def raster_delta_ploth(var, period):
+    info = _pre_delta_details(var, period, type='hist')
+    _plot.plot_histogram(**info)
+
+
+def raster_delta_plot(var, period):
+    info = _pre_delta_details(var, period, type='delta')
+    _plot.plot_delta(**info)
 
 
 def raster_to_xyz(period):
@@ -133,6 +167,47 @@ def raster_to_xyz(period):
     lindx_df.to_csv(out_csv, index=False)
 
 
+def lindx_stat(period, predicted=False):
+    if predicted:
+        csv_file = os.path.join(CF.LINDX_DIR, period, f'{period}_lindx_predicted.csv')
+    else:
+        csv_file = os.path.join(CF.LINDX_DIR, period, f'{period}_lindx.csv')
+
+
+    bounds = [0, 12.5, 25, 50, 75, 100]
+    n = len(bounds)-1
+
+    df = pd.read_csv(csv_file, header=0, usecols=['lindx'])
+    indexes = df['lindx']
+    df_len = indexes.shape[0]
+
+    stats = []
+    for i in range(n):
+        lbd, rbd = bounds[i], bounds[i+1]
+        if i == n:
+            lmask = indexes >= rbd
+            rmask = indexes <= lbd
+            bnd = f"[{lbd}, {rbd}]"
+        else:
+            lmask = indexes >= bounds[i]
+            rmask = indexes < bounds[i+1]
+            bnd = f"[{lbd}, {rbd})"
+
+        counts = (lmask & rmask).sum()
+
+        out = {}
+        out['bounds'] = bnd
+        out['counts'] = counts
+        out['%'] = round(counts/df_len * 100, 2)
+        stats.append(out)
+
+    _model = 'ANN' if predicted else 'ACTUAL'
+
+    print(f'Stats for {period} ({_model})')
+    for stat in reversed(stats):
+        print(stat)
+
+
 # OTHER CORE
 
 def exclude(period):
@@ -171,12 +246,18 @@ def exclude(period):
             elif not is_baseline and B[y][x]:
                 data.append((y,x))
 
-    data = np.array(data)
-
-    return data
+    return np.array(data)
 
 
 # PROCESSING
+
+def _get_stats(data):
+    _min = np.partition(data, 1)[1]
+    _max = np.partition(data, -2)[-2]
+    _mean = data.mean()
+
+    return _min, _max, _mean
+
 
 def _get_raster_data(ds_file):
     gd = gdal.Open(ds_file)
@@ -204,8 +285,14 @@ def _get_data_factor(var, period):
     return data_factor
 
 
-def _get_plot_details(var, period):
-    title = '{} '.format(CF.CLIM_TYPES[var])
+def _get_plot_details(var, period, lindx=False, predicted=False):
+    if lindx:
+        if predicted:
+            title = 'ANN: {} '.format(CF.CLIM_TYPES[var])
+        else:
+            title = 'ACTUAL: {} '.format(CF.CLIM_TYPES[var])
+    else:
+        title = '{} '.format(CF.CLIM_TYPES[var])
 
     if period == 'baseline':
         title += '(Near-Current)'
@@ -213,6 +300,7 @@ def _get_plot_details(var, period):
         title += f'(2030)'
     elif period == '2050s':
         title += f'(2050)'
+
 
     label = 'Prec (mm)' if var == 'prec' else 'Temp (°C)'
 
@@ -333,6 +421,38 @@ def _bulk_future_algebra(var, period):
     raster_algebra(output_file, input_files, calc_type='mean')
 
 
+def _data_to_raster(raster_dir=None, out_path=None, data=None, no_data=None, dtype=None):
+    """
+    Transform data to tiff
+    """
+
+    from osgeo import osr
+
+    # PART 1
+    gd = gdal.Open(raster_dir)
+    gt = gd.GetGeoTransform()
+    shape = data.shape
+    gd = None
+
+    # Create gtiff
+    driver = gdal.GetDriverByName("GTiff")
+    dst_ds = driver.Create(out_path, shape[1], shape[0], 1, eType=dtype)
+
+    # top left x, w-e pixel resolution, rotation, top left y, rotation, n-s pixel resolution
+    dst_ds.SetGeoTransform(gt)
+
+    # set the reference info
+    srs = osr.SpatialReference()
+    srs.SetWellKnownGeogCS(CF.BASELINE_SRS)
+    dst_ds.SetProjection(srs.ExportToWkt())
+
+    # write the band
+    dst_ds.GetRasterBand(1).SetNoDataValue(no_data)
+    dst_ds.GetRasterBand(1).WriteArray(data)
+
+
+# INTERFACES
+
 def crop(var, period):
     # 1a. BASELINE: Crop tiff
     # 1b. FUTURE: Merged Crop tiff
@@ -371,7 +491,7 @@ def algebra(var, period):
         _bulk_future_algebra(var, period)
 
 
-def algebraic_delta():
+def raster_delta():
     baseline_excludes = exclude('baseline')
     future_excludes = exclude('2030s')
 
@@ -391,15 +511,19 @@ def algebraic_delta():
             future_dir = os.path.join(CF.CROPPED_DIR, period, var, f'{var}_mean_{period}.tif')
 
             future_data, f_nodata = _get_raster_data(future_dir)
-
             for y, x in future_excludes:
                 future_data[y,x] = f_nodata
 
+            if var != 'prec':
+                future_data = future_data.astype(float)
+
+            indexes = np.argwhere(future_data >= 0)
             for y, x in indexes:
                 if var == 'prec':
                     future_data[y,x] = future_data[y,x] - base_data[y,x]
                 else:
-                    future_data[y,x] = (future_data[y,x] - base_data[y,x]) / 10
+                    delta = float(future_data[y,x] * 0.1 - base_data[y,x])
+                    future_data[y,x] = round(delta, 3)
 
             out_path = os.path.join(CF.CLIM_VAR_DIR, 'clim_delta', f'delta_{var}_{period}.tif')
 
@@ -422,35 +546,82 @@ def algebraic_delta():
             )
 
 
-def _data_to_raster(raster_dir=None, out_path=None, data=None, no_data=None, dtype=None):
-    """
-    Transform data to tiff
-    """
+def raster_lindx_delta():
+    baseline_excludes = exclude('baseline')
+    future_excludes = exclude('2030s')
 
-    from osgeo import osr
+    for var in WC.VARIABLES:
+        if var == 'prec':
+            base_dir = os.path.join(CF.CROPPED_DIR, 'baseline', var, f'{var}_sum_baseline.tif')
+        else:
+            base_dir = os.path.join(CF.CROPPED_DIR, 'baseline', var, f'{var}_mean_baseline.tif')
 
-    # PART 1
-    gd = gdal.Open(raster_dir)
-    gt = gd.GetGeoTransform()
-    shape = data.shape
-    gd = None
+        base_data, b_notada = _get_raster_data(base_dir)
+        for y, x in baseline_excludes:
+            base_data[y,x] = b_notada
 
-    # Create gtiff
-    driver = gdal.GetDriverByName("GTiff")
-    dst_ds = driver.Create(out_path, shape[1], shape[0], 1, eType=dtype)
+        indexes = np.argwhere(base_data >= 0)
 
-    # top left x, w-e pixel resolution, rotation, top left y, rotation, n-s pixel resolution
-    dst_ds.SetGeoTransform(gt)
+        for period in WC.PERIODS:
+            future_dir = os.path.join(CF.CROPPED_DIR, period, var, f'{var}_mean_{period}.tif')
 
-    # set the reference info
-    srs = osr.SpatialReference()
-    srs.SetWellKnownGeogCS(CF.BASELINE_SRS)
-    dst_ds.SetProjection(srs.ExportToWkt())
+            future_data, f_nodata = _get_raster_data(future_dir)
+            for y, x in future_excludes:
+                future_data[y,x] = f_nodata
 
-    # write the band
-    dst_ds.GetRasterBand(1).SetNoDataValue(no_data)
-    dst_ds.GetRasterBand(1).WriteArray(data)
+            if var != 'prec':
+                future_data = future_data.astype(float)
 
+            indexes = np.argwhere(future_data >= 0)
+            for y, x in indexes:
+                if var == 'prec':
+                    future_data[y,x] = future_data[y,x] - base_data[y,x]
+                else:
+                    delta = float(future_data[y,x] * 0.1 - base_data[y,x])
+                    future_data[y,x] = round(delta, 3)
+
+            out_path = os.path.join(CF.CLIM_VAR_DIR, 'clim_delta', f'delta_{var}_{period}.tif')
+
+            if var == 'prec':
+                no_data = -9999
+                future_data = np.where(future_data == f_nodata, no_data, future_data)
+                f_nodata = no_data
+
+            if var == 'prec':
+                dtype = gdal.GDT_Int32
+            else:
+                dtype = gdal.GDT_Float32
+
+            _data_to_raster(
+                raster_dir=future_dir,
+                out_path=out_path,
+                data=future_data,
+                no_data=f_nodata,
+                dtype=dtype
+            )
+
+def xyz_to_raster(period):
+    raster_dir = os.path.join(CF.CROPPED_DIR, period, 'tmin', f'tmin_mean_{period}.tif')
+    data, no_data = _get_raster_data(raster_dir)
+
+    for case in ['actual', 'predicted']:
+        new_data = np.full(data.shape, no_data, dtype=np.float32)
+
+        if case == 'actual':
+            out_path = os.path.join(CF.LINDX_DIR, period, f'{period}_lindx.tif')
+        else:
+            out_path = os.path.join(CF.LINDX_DIR, period, f'{period}_lindx_predicted.tif')
+
+        pre, _ = os.path.splitext(out_path)
+        refer_csv = f'{pre}.csv'
+
+        lindx_df = pd.read_csv(refer_csv, header=0, usecols=['X','Y','lindx'])
+        for _, row in lindx_df.iterrows():
+            x, y = int(row['X']), int(row['Y'])
+            new_data[y,x] = row['lindx']
+
+        dtype = gdal.GDT_Float32
+        _data_to_raster(raster_dir=raster_dir, out_path=out_path, data=new_data, no_data=no_data, dtype=dtype)
 
 
 if __name__ == '__main__':
@@ -472,7 +643,7 @@ if __name__ == '__main__':
     # ----------------------
     # 3. RASTER ALGEBRA (DIFF)
     # ----------------------
-    # algebraic_delta()
+    # raster_delta()
 
 
     # ----------------------
@@ -491,18 +662,23 @@ if __name__ == '__main__':
     # ----------------------
     # 5. PLOTTING RESULTS
     # ----------------------
+    # A. Cropped TIF
     # raster_plot(var, period, raw=True)
-    # raster_delta_plot(var='tmax', period='2030s')
+
+    # B. Delta TIF
+    # raster_delta_plot(var='tmean', period='2050s')
+    # raster_delta_ploth(var='prec', period='2050s')
+
 
     # ----------------------
     # 6. RASTERS TO XYZ (LAND INDEX)
     # ----------------------
     # raster_to_xyz(period)
 
-    # TODO
-    # ----------------------
+
     # 7. LINDX XYZ TO TIFF
     # ----------------------
+    # period = '2050s'
     # xyz_to_raster(period)
 
 
@@ -512,9 +688,25 @@ if __name__ == '__main__':
 
 
     # ----------------------
-    # 9. LINDX TO TIF
+    # 9. PLOT RESULT
     # ----------------------
-    # csv_file =  # path here
-    # sample_tif =  # path here
-    # lindx_csv_to_tif(csv_file, sample_tif)
+    # period = '2050s'
+    # raster_plot_lindx(period,
+    #     predicted=False,
+    #     with_border=True,
+    #     between=(75, 100)
+    # )
 
+
+    # ----------------------
+    # 10. LINDX STATISTICS
+    # ----------------------
+    # period = 'baseline'
+    # predicted = False
+    # lindx_stat(period, predicted=predicted)
+
+
+    # ----------------------
+    # 10. DELTA ON OPTIMAL LOCATIONS
+    # ----------------------
+    # raster_lindx_delta()

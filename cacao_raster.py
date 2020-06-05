@@ -33,9 +33,6 @@ def doit(cmd):
         raise Exception("Execution error: \n{}".format(err.decode("utf-8")))
 
 
-from osgeo import gdal
-
-
 def gdal_compare(golden_file, new_file):
     cmd = "python gdalcompare.py {} {}".format(golden_file, new_file)
     doit(cmd)
