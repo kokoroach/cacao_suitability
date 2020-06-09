@@ -47,14 +47,66 @@ def raster_merge(output_file, input_files, out_format="GTiff", bounds=CF.PH_BOUN
         return
 
 
-def raster_info(input_file, stats=False, histogram=False):
+def raster_info(input_file, stats=False, histogram=False, _format='json'):
     # NOTE: Disable the creation of aux.xml file
     gdal.SetConfigOption('GDAL_PAM_ENABLED', 'NO')
 
-    return gdal.Info(input_file, stats=stats, reportHistograms=histogram, format='json')
+    return gdal.Info(input_file, stats=stats, reportHistograms=histogram, format=_format)
 
 
-def raster_plot_lindx(period, predicted=False, with_border=False, between=None):
+def _lindx_areas(area):
+    # NOTE: Current Areas are designed to plot on S1 Class
+    areas = {
+        'luzon': {
+            'title': 'Luzon',
+            'xlim': (119, 124.7),
+            'ylim': (12.1, 20)
+        },
+        'palawan':{
+            'title': 'Palawan',
+            'xlim': (116.8, 120.6),
+            'ylim': (7.7, 12.7),
+        },
+        'west-min':{
+            'title': 'Western Mindanao',
+            'xlim': (119, 123.9),
+            'ylim': (4.6, 8.9),
+        },
+        'south-min':{
+            'title': 'Southern Mindanao',
+            'xlim': (123.9, 126.6),
+            'ylim': (5.2, 7.7),
+        },
+        'north-min':{
+            'title': 'Northern Mindanao',
+            'xlim': (123.75, 126.6),
+            'ylim': (7.9, 9.4),
+        },
+        'visayas':{
+            'title': 'Visayas',
+            'xlim': (121.6, 126.5),
+            'ylim': (9.0, 12.7),
+        },
+    }
+    return areas.get(area)
+
+
+def _lindx_classes(lindx_class):
+    lindx_classes = {
+        'S1': {'bounds': (75, 100)},
+        'S2': {'bounds': (50, 75)},
+        'S3': {'bounds': (25, 50)},
+        'N1': {'bounds': (12.5, 25)},
+        'N2': {'bounds': (0, 12.5)},
+    }
+    return lindx_classes.get(lindx_class)
+
+
+def raster_plot_lindx(period, area=None, predicted=False, with_border=False, lindx_class=None):
+    between = None
+    xlim = None
+    ylim = None
+
     if predicted:
         input_file = os.path.join(CF.LINDX_DIR, period, f'{period}_lindx_predicted.tif')
     else:
@@ -63,14 +115,29 @@ def raster_plot_lindx(period, predicted=False, with_border=False, between=None):
     if period == 'baseline':
         period = 'Near-Current'
 
+    lindx_class = _lindx_classes(lindx_class)
+    if lindx_class is not None:
+        between = lindx_class['bounds']
+
+    area_dict = _lindx_areas(area)
+    if area_dict is not None:
+        area = area_dict['title']
+        xlim = area_dict['xlim']
+        ylim = area_dict['ylim']
+    else:
+        raise ValueError
+
     _model = 'ANN' if predicted else 'ACTUAL'
-    if between is not None:
-        title = f'Optimal LSI:  {period} ({_model})'
+    if lindx_class is not None:
+        title = f'{lindx_class} {area}:  {period} ({_model})'
     else:
         title = f'Land Suitability Index: {period} ({_model})'
 
     label = 'LSI'
-    _plot.plot(input_file, title=title, label=label, linx=True, with_border=with_border, between=between)
+    _plot.plot(input_file,
+        title=title, label=label,
+        linx=True, with_border=with_border,
+        between=between, xlim=xlim, ylim=ylim)
 
 
 def raster_plot(var, period, raw=False):
@@ -78,10 +145,10 @@ def raster_plot(var, period, raw=False):
     title, label = _get_plot_details(var, period)
     data_factor = _get_data_factor(var, period)
 
-    _plot.plot(input_file, var=var, title=title, label=label, factor=data_factor, linx=lindx, raw=raw)
+    _plot.plot(input_file, var=var, title=title, label=label, factor=data_factor, linx=True, raw=raw)
 
 
-def _pre_delta_details(var, period, type):
+def _pre_delta_details(var, period):
     input_file = os.path.join(CF.CLIM_VAR_DIR, 'clim_delta', f'delta_{var}_{period}.tif')
     title, label = _get_plot_details(var, period)
     title = f'DELTA: {title}'
@@ -96,7 +163,6 @@ def _pre_delta_details(var, period, type):
         'input_file': input_file,
         'var': var,
         'period': period,
-        'data': data,
         'title': title,
         'label': label,
         'title': title,
@@ -108,14 +174,99 @@ def _pre_delta_details(var, period, type):
     return details
 
 
-def raster_delta_ploth(var, period):
-    info = _pre_delta_details(var, period, type='hist')
-    _plot.plot_histogram(**info)
+def _get_plot_exclude(lbound, rbound):
+    input_file = os.path.join(CF.LINDX_DIR, 'baseline', f'baseline_lindx_predicted.tif')
+    bs_arr, _ = _get_raster_data(input_file)
+
+    input_file = os.path.join(CF.LINDX_DIR, period, f'{period}_lindx_predicted.tif')
+    ft_arr, _ = _get_raster_data(input_file)
+
+    bs_exclude = ((bs_arr <= lbound) | (bs_arr > rbound)) & (bs_arr != -999)
+    ft_exclude = ((ft_arr <= lbound) | (ft_arr > rbound)) & (ft_arr != -999)
+
+    return bs_exclude, ft_exclude
 
 
-def raster_delta_plot(var, period):
-    info = _pre_delta_details(var, period, type='delta')
-    _plot.plot_delta(**info)
+def raster_delta_ploth(var, period, lindx_class=None, area=None):
+    if period == 'baseline':
+        raise ValueError
+
+    from math import ceil
+
+    xlim = None
+    ylim = None
+
+    info = _pre_delta_details(var, period)
+    ds_arr, no_data, ds_geom = _get_raster_data(info['input_file'], with_geom=True)
+
+    class_dict = _lindx_classes(lindx_class)
+    if class_dict is not None:
+        between = class_dict['bounds']
+        lbound, rbound = tuple(list(sorted(between)))
+
+        bs_exclude, ft_exclude = _get_plot_exclude(lbound, rbound)
+        ds_arr[bs_exclude & ft_exclude] = no_data
+
+    area_dict = _lindx_areas(area)
+    if area_dict is not None:
+        area_title = area_dict['title']
+        xlim = area_dict['xlim']
+        ylim = area_dict['ylim']
+
+        x0 = ceil((xlim[0] - ds_geom[0])/ds_geom[1])
+        x1 = ceil((xlim[1] - ds_geom[0])/ds_geom[1])
+        y0 = ceil((ylim[0] - ds_geom[3])/ds_geom[5])
+        y1 = ceil((ylim[1] - ds_geom[3])/ds_geom[5])
+
+        if x0 < 0:
+            x0 = 0
+        if y1 < 0:
+            y1 = 0
+
+        ds_arr = ds_arr[y1:y0, x0:x1]
+
+    data = ds_arr.flatten()
+    data = data[data != no_data]
+
+    if lindx_class is not None:
+        _dir = r'/home/koko/Desktop/thesis/cacao_suitability/land_indices/optimal'
+        _file = os.path.join(_dir, area, f'{area}_delta_{var}_{period}.png')
+
+        var = CF.CLIM_TYPES[var]
+
+        info['title'] = f'{lindx_class} {area_title}:  Change in {var} ({period})'
+        info['vmean'] = data.mean()
+        info['_file'] = _file
+
+    _plot.plot_histogram(data, **info)
+    # _plot.plot_delta(ds_arr, ds_geom, **info)
+
+
+
+def raster_delta_plot(var, period, lindx_class=None, area=None):
+    xlim = None
+    ylim = None
+
+    area = _lindx_areas(area)
+    if area is not None:
+        xlim = area['xlim']
+        ylim = area['ylim']
+
+    info = _pre_delta_details(var, period)
+
+    ds_arr, noData, ds_geom = _get_raster_data(info['input_file'], with_geom=True)
+
+    class_dict = _lindx_classes(lindx_class)
+    if class_dict is not None:
+        between = class_dict['bounds']
+        lbound, rbound = tuple(list(sorted(between)))
+
+        bs_exclude, ft_exclude = _get_plot_exclude(lbound, rbound)
+
+        ds_arr[bs_exclude & ft_exclude] = 0
+
+
+    _plot.plot_delta(ds_arr, ds_geom, xlim=xlim, ylim=ylim, **info)
 
 
 def raster_to_xyz(period):
@@ -267,11 +418,14 @@ def _get_stats(data):
     return _min, _max, _mean
 
 
-def _get_raster_data(ds_file):
+def _get_raster_data(ds_file, with_geom=False):
     gd = gdal.Open(ds_file)
     data = gd.GetRasterBand(1).ReadAsArray()
     noData = gd.GetRasterBand(1).GetNoDataValue()
+    gt = gd.GetGeoTransform()
     gd = None
+    if with_geom:
+        return data, noData, gt
     return data, noData
 
 
@@ -608,6 +762,7 @@ def raster_lindx_delta():
                 dtype=dtype
             )
 
+
 def xyz_to_raster(period):
     raster_dir = os.path.join(CF.CROPPED_DIR, period, 'tmin', f'tmin_mean_{period}.tif')
     data, no_data = _get_raster_data(raster_dir)
@@ -663,8 +818,9 @@ if __name__ == '__main__':
     # src_file = _get_cropped_file(var, period, model=model)
 
     # NOTE: Provide specific path
-    # src_file = r''
-    # raster_info(src_file, stats=True)
+    src_file = r''
+    # info = raster_info(src_file, stats=True, _format='text')
+    # print(info)
 
 
     # ----------------------
@@ -674,10 +830,9 @@ if __name__ == '__main__':
     # raster_plot(var, period, raw=True)
 
     # B. Delta TIF
-    # var = 'prec'
-    # period = '2030s'
-    # raster_delta_ploth(var=var, period=period)
-    # raster_delta_plot(var=var, period=period)
+    var = 'prec'
+    period = '2050s'
+    raster_delta_ploth(var=var, period=period, lindx_class='S1', area='west-min')
 
 
     # ----------------------
@@ -700,19 +855,22 @@ if __name__ == '__main__':
     # ----------------------
     # 9. PLOT RESULT
     # ----------------------
-    # period = '2050s'
+    period = '2030s'
+    area = None
+    lindx_class = 'S1'
     # raster_plot_lindx(period,
+    #     area=area,
+    #     lindx_class=lindx_class,
     #     predicted=True,
-    #     with_border=True,
-    #     between=(75, 100)
+    #     with_border=False,
     # )
 
 
     # ----------------------
     # 10. LINDX STATISTICS
     # ----------------------
-    # period = 'baseline'
-    # predicted = False
+    # period = '2050s'
+    # predicted = True
     # lindx_stat(period, predicted=predicted)
 
 

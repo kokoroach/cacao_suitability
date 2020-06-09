@@ -10,7 +10,6 @@ from matplotlib import cm
 from matplotlib.colors import LinearSegmentedColormap, BoundaryNorm
 from matplotlib.ticker import PercentFormatter
 from descartes import PolygonPatch
-from shapely.geometry import Polygon
 
 
 gdal.UseExceptions()
@@ -51,7 +50,8 @@ def _get_bounds(ranges):
     return sorted(range_lst)
 
 
-def plot(input_file, var=None, vmin=-1, title=None, label=None, linx=False, factor=1, raw=False, with_border=False, between=None):
+def plot(input_file, var=None, vmin=-1, title=None, label=None, linx=False, factor=1,
+         raw=False, with_border=False, between=None, xlim=None, ylim=None):
     if not linx and var is None:
         raise ValueError(f"Var type needed for non-LINDX plot")
 
@@ -66,7 +66,9 @@ def plot(input_file, var=None, vmin=-1, title=None, label=None, linx=False, fact
     if linx:
         if between:
             lbound, rbound = tuple(list(sorted(between)))
-            ds_arr[(ds_arr <= lbound) & (ds_arr > rbound) & (ds_arr != -999)] = 0
+
+            exclude_indx = ((ds_arr <= lbound) | (ds_arr > rbound)) & (ds_arr != -999)
+            ds_arr[exclude_indx] = 0
 
             if lbound == 0:
                 bounds = [-0.5, lbound, rbound]
@@ -145,8 +147,6 @@ def plot(input_file, var=None, vmin=-1, title=None, label=None, linx=False, fact
 
 
     if with_border:
-        from shapely.geometry import shape
-
         with fiona.open(CF.PROVINCIAL_BORDER) as shapefile:
             # for feature in shapefile:
             #     print(feature["properties"]["PROVINCE"])
@@ -158,6 +158,11 @@ def plot(input_file, var=None, vmin=-1, title=None, label=None, linx=False, fact
 
 
     plt.tight_layout()
+
+    if xlim is not None and ylim is not None:
+        plt.xlim(xlim[0], xlim[1])
+        plt.ylim(ylim[0], ylim[1])
+
     plt.show()
 
 
@@ -184,7 +189,8 @@ def _get_bounds_delta(var, vmin=None, vmax=None):
     return sorted(bounds)
 
 
-def plot_histogram(data, var=None, title=None, label=None, vmax=None, vmin=None, vmean=None, **kwargs):
+def plot_histogram(data, var=None, vmax=None, vmin=None, vmean=None,
+                   title=None, label=None, **kwargs):
 
     def set_bar_labels(patches):
         # For each bar: Place a label
@@ -220,7 +226,7 @@ def plot_histogram(data, var=None, title=None, label=None, vmax=None, vmin=None,
 
     fig.suptitle(title)
 
-    ax1.set_ylabel(f'Change in {label}')
+    ax1.set_ylabel(f'Change in Annual {label}')
     ax1.set_xlabel('Percentage')
 
     bins = _get_bounds_delta(var, vmin=vmin, vmax=vmax)
@@ -228,6 +234,7 @@ def plot_histogram(data, var=None, title=None, label=None, vmax=None, vmin=None,
     plt.hist(data, bins, weights=np.ones(len(data)) / len(data), range=[vmin, vmax], orientation='horizontal')
 
     # LABELS
+    ax1.set_yticks(bins)
     set_bar_labels(ax1.patches)
     plt.gca().xaxis.set_major_formatter(PercentFormatter(1))
 
@@ -243,9 +250,8 @@ def plot_histogram(data, var=None, title=None, label=None, vmax=None, vmin=None,
     plt.show()
 
 
-def plot_delta(input_file, var=None, vmin=None, vmax=None, title=None, label=None, **kwargs):
-    ds = gdal.Open(input_file)
-    ds_arr = np.array(ds.GetRasterBand(1).ReadAsArray())
+def plot_delta(ds_arr, ds_geo, var=None, vmin=None, vmax=None,
+               title=None, label=None, xlim=None, ylim=None, **kwargs):
 
     fig, ax1 = plt.subplots(1,1)
 
@@ -262,7 +268,7 @@ def plot_delta(input_file, var=None, vmin=None, vmax=None, title=None, label=Non
     cmap.set_under(color='black')
 
     nrows, ncols = ds_arr.shape
-    x0, dx, _, y0, _, dy = ds.GetGeoTransform()
+    x0, dx, _, y0, _, dy = ds_geo
 
     x1 = x0 + dx * ncols
     y1 = y0 + dy * nrows
@@ -307,4 +313,9 @@ def plot_delta(input_file, var=None, vmin=None, vmax=None, title=None, label=Non
 
     fig.patch.set_facecolor(bg_color)
     plt.tight_layout()
+
+    if xlim is not None and ylim is not None:
+        plt.xlim(xlim[0], xlim[1])
+        plt.ylim(ylim[0], ylim[1])
+
     plt.show()
