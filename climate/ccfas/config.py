@@ -22,6 +22,7 @@ class Period(ExtendedEnum):
     """
     TODO:
     """
+    P_BASELINE = 'baseline'
     P_2030 = '2030s'
     P_2050 = '2050s'
 
@@ -67,7 +68,7 @@ class Model(ExtendedEnum):
 # Resolution: 30seconds
 # Scenario: RCP 6.0
 
-DATA_URL = 'http://datacgiar.s3.amazonaws.com/ccafs/ccafs-climate/data/ipcc_5ar_ciat_tiled'
+DATA_URL = 'http://datacgiar.s3.amazonaws.com/ccafs/ccafs-climate/data/ipcc_5ar_ciat_tiled'  # noqa
 
 SCENARIO = 'rcp6_0'
 FORMAT = 'asc'

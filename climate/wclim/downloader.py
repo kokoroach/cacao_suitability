@@ -1,5 +1,6 @@
 from cacao.config import WCLIM_DATA_DIR
-from climate.wclim.config import DATA_URL, FILE_NAME, PERIOD
+from climate.wclim.config import DATA_URL, FILE_NAME
+from climate.ccfas.config import Period
 from utils.download import download as _download
 
 
@@ -25,5 +26,7 @@ def generate_url(clim):
 
 def get_output_file(clim):
     file_name = _get_filename(clim)
-    file_path = WCLIM_DATA_DIR / PERIOD / clim / file_name
+
+    period = Period.P_BASELINE.value
+    file_path = WCLIM_DATA_DIR / period / clim / file_name
     return file_path
