@@ -1,6 +1,6 @@
 from cacao.config import WCLIM_DATA_DIR
 from climate.wclim.config import DATA_URL, FILE_NAME
-from climate.ccfas.config import Period
+from climate.ccfas.config import Climate, Period
 from utils.download import download as _download
 
 
@@ -16,7 +16,7 @@ def download(clim):
 
 
 def generate_url(clim):
-    if clim == 'tmean':
+    if clim == Climate.TMEAN.value:
         clim = 'tavg'
 
     file_name = _get_filename(clim)
