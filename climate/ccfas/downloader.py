@@ -8,12 +8,12 @@ def download(clim, period, model=None):
     """
     Download future data from the CCAFS Climate Database
     """
-    for region in Region.keys():
+    for region in Region.values():
         if model:
             download_file(clim, period, model, region)
         else:
             # If model is not provided, download all models
-            for _model in Model.keys():
+            for _model in Model.values():
                 download_file(clim, period, _model, region)
 
 
