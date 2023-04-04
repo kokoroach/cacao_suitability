@@ -60,3 +60,9 @@ def run_for_future(func):
 # 3b. Raster algebra for future
 # do_future_raster_calc(clim, period)
 # generate_future_calc_summary()
+
+
+# ----------------------------
+# 4. RASTER STATISTICS
+# ----------------------------
+raster_info(clim, period)

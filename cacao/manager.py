@@ -2,6 +2,7 @@ import os
 import warnings
 
 from osgeo import gdal
+from pprint import pprint
 
 from cacao import config as CF
 from cacao import raster
@@ -240,3 +241,28 @@ def crop_ph_only(output_file, input_file, srcSRS=None, dstSRS=None):
     gdal.Warp(output_file, input_file, cutlineDSName=CF.PH_BORDER,
               cropToCutline=True, dstAlpha=False, srcSRS=srcSRS, dstSRS=dstSRS)
     os.remove(input_file)
+
+
+# ----------------------------
+# RASTER STATISTICS
+# ----------------------------
+
+def raster_info(clim, period, src_file=None):
+    """
+    Primarily used for getting info for preprocessed rasters. That is, the args
+    for clim, period will check data in. the CF.OUTPUT_DATA_DIR.
+
+    To override for specific file, pass `scrc_file` path instead.
+    """
+    calc_type = utils.get_calc_type(clim)
+
+    if src_file is None:
+        file_name = f'{clim}_{calc_type}.tif'
+        src_file = CF.OUTPUT_DATA_DIR / period / file_name
+        src_file = str(src_file)
+
+    # NOTE: Disable the creation of aux.xml file
+    gdal.SetConfigOption('GDAL_PAM_ENABLED', 'NO')
+
+    info = gdal.Info(src_file, stats=True, format='json')
+    pprint(info, compact=True)
